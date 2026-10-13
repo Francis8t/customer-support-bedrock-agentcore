@@ -1,0 +1,6 @@
+
+trace.json
+agentcore/.cache/
+agentcore/.cli/logs/
+app/CustomerSupport/.venv/
+__pycache__/
