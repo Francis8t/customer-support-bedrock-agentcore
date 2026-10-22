@@ -1,6 +1,35 @@
-
+# ─── Secrets & sensitive artifacts (NEVER commit) ──────────────────
+# Trace/log files capture AWS auth context (access keys, tokens, ARNs)
 trace.json
+*.trace.json
+*.log
+
+# Load-test script bakes in a bearer token when generated — regenerate locally
+loadgen.sh
+
+# Env / credentials
+.env
+.env.*
+*.pem
+credentials
+*_secret*
+
+# ─── AgentCore CLI state & cache (account IDs, ARNs, deploy state) ──
+agentcore/.cli/
 agentcore/.cache/
-agentcore/.cli/logs/
-app/CustomerSupport/.venv/
+agentcore/cdk/cdk.out/
+agentcore/cdk/node_modules/
+
+# ─── Python ────────────────────────────────────────────────────────
+.venv/
+**/.venv/
 __pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# ─── OS / editor ───────────────────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/

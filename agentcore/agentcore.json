@@ -30,6 +30,15 @@
           ]
         }
       }
+    },
+    {
+      "name": "CustomerSupportAB",
+      "build": "CodeZip",
+      "entrypoint": "main.py",
+      "codeLocation": "app/CustomerSupportAB/",
+      "runtimeVersion": "PYTHON_3_14",
+      "networkMode": "PUBLIC",
+      "protocol": "HTTP"
     }
   ],
   "memories": [
@@ -53,7 +62,17 @@
     }
   ],
   "knowledgeBases": [],
-  "credentials": [],
+  "credentials": [
+    {
+      "authorizerType": "OAuthCredentialProvider",
+      "name": "gateway-egress-oauth",
+      "discoveryUrl": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_rW6Vu4TEG/.well-known/openid-configuration",
+      "scopes": [
+        "default-m2m-resource-server-f634b250/read"
+      ],
+      "vendor": "CustomOauth2"
+    }
+  ],
   "evaluators": [],
   "onlineEvalConfigs": [
     {
@@ -63,6 +82,15 @@
         "Builtin.GoalSuccessRate",
         "Builtin.Correctness",
         "Builtin.ToolSelectionAccuracy"
+      ],
+      "samplingRate": 100,
+      "enableOnCreate": true
+    },
+    {
+      "name": "ABQualityMonitor",
+      "agent": "CustomerSupportAB",
+      "evaluators": [
+        "Builtin.GoalSuccessRate"
       ],
       "samplingRate": 100,
       "enableOnCreate": true
@@ -81,6 +109,21 @@
             "lambdaArn": "arn:aws:lambda:us-east-1:890349358874:function:workshop-warranty-check",
             "toolSchemaFile": "app/CustomerSupport/tool/warranty_schema.json"
           }
+        },
+        {
+          "name": "ProcessRefund",
+          "targetType": "lambdaFunctionArn",
+          "lambdaFunctionArn": {
+            "lambdaArn": "arn:aws:lambda:us-east-1:890349358874:function:workshop-process-refund",
+            "toolSchemaFile": "app/CustomerSupport/tool/refund_schema.json"
+          }
+        },
+        {
+          "name": "customer-support-ab",
+          "targetType": "httpRuntime",
+          "httpRuntime": {
+            "runtime": "CustomerSupportAB"
+          }
         }
       ],
       "authorizerType": "CUSTOM_JWT",
@@ -94,7 +137,11 @@
         }
       },
       "enableSemanticSearch": true,
-      "exceptionLevel": "NONE"
+      "exceptionLevel": "NONE",
+      "policyEngineConfiguration": {
+        "policyEngineName": "CustomerSupportPolicyEngine",
+        "mode": "LOG_ONLY"
+      }
     }
   ],
   "unassignedTargets": [
@@ -107,10 +154,72 @@
       }
     }
   ],
-  "policyEngines": [],
-  "configBundles": [],
+  "policyEngines": [
+    {
+      "name": "CustomerSupportPolicyEngine",
+      "description": "Governs customer support agent tool access — refund limits and tool permissions",
+      "policies": [
+        {
+          "name": "refund_limit_policy",
+          "description": "Allow refunds under 100 dollars only",
+          "statement": "permit(principal, action == AgentCore::Action::\"ProcessRefund___process_refund\", resource == AgentCore::Gateway::\"arn:aws:bedrock-agentcore:us-east-1:890349358874:gateway/customersupport-my-gateway-secure-sz0ohpwbdn\") when { context.input.amount < 100 };",
+          "validationMode": "FAIL_ON_ANY_FINDINGS",
+          "enforcementMode": "ACTIVE",
+          "authorizationPhase": "INITIATE"
+        },
+        {
+          "name": "warranty_check_policy",
+          "description": "Allow all authenticated users to check warranties",
+          "statement": "permit(principal, action == AgentCore::Action::\"WarrantyCheck___check_warranty\", resource == AgentCore::Gateway::\"arn:aws:bedrock-agentcore:us-east-1:890349358874:gateway/customersupport-my-gateway-secure-sz0ohpwbdn\") when { (principal is AgentCore::OAuthUser) };",
+          "validationMode": "IGNORE_ALL_FINDINGS",
+          "enforcementMode": "ACTIVE",
+          "authorizationPhase": "INITIATE"
+        },
+        {
+          "name": "refund_reason_policy",
+          "statement": "forbid (principal, action == AgentCore::Action::\"ProcessRefund___process_refund\", resource == AgentCore::Gateway::\"arn:aws:bedrock-agentcore:us-east-1:890349358874:gateway/customersupport-my-gateway-secure-sz0ohpwbdn\")\nwhen { !(context.input.reason like \"*defective*\") };",
+          "validationMode": "FAIL_ON_ANY_FINDINGS",
+          "enforcementMode": "ACTIVE",
+          "authorizationPhase": "INITIATE"
+        }
+      ]
+    }
+  ],
+  "configBundles": [
+    {
+      "name": "customerSupportControl",
+      "type": "ConfigurationBundle",
+      "components": {
+        "{{runtime:CustomerSupportAB}}": {
+          "configuration": {
+            "system_prompt": "You are a helpful and professional customer support assistant for an e-commerce company. Provide accurate information using the tools available to you. Be friendly, patient, and understanding. Always offer additional help after answering. Always use tools to get accurate information rather than guessing."
+          }
+        }
+      },
+      "branchName": "mainline",
+      "commitMessage": "Baseline prompt"
+    },
+    {
+      "name": "customerSupportTreatment",
+      "type": "ConfigurationBundle",
+      "components": {
+        "{{runtime:CustomerSupportAB}}": {
+          "configuration": {
+            "system_prompt": "You are a helpful and professional customer support assistant for an e-commerce company. Be friendly, patient, and understanding. Always offer additional help after answering.\n\nAlways use tools to get accurate information rather than guessing. Even if prior context seems to contain the answer, call the appropriate tool to verify before responding.\n\nWhen a user's request is ambiguous about which product or order, ask to clarify before acting.\n\nIf a requested refund amount exceeds the product price, flag the discrepancy and offer to process the correct amount rather than only redirecting to support.\n\nBefore processing refunds or other consequential actions, state the planned action and wait for explicit user approval. Do not treat silence as consent."
+          }
+        }
+      },
+      "branchName": "mainline",
+      "commitMessage": "Recommended prompt from cs-prompt-rec"
+    }
+  ],
   "abTests": [],
-  "harnesses": [],
+  "harnesses": [
+    {
+      "name": "OrderResearchAgent",
+      "path": "app/OrderResearchAgent"
+    }
+  ],
   "datasets": [],
   "capacityProviders": [],
   "payments": []
